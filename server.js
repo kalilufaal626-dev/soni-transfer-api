@@ -14,7 +14,12 @@ const pool = new Pool({
   user:     process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  ssl: { rejectUnauthorized: false } // Required for hosted PostgreSQL
+  ssl: { rejectUnauthorized: false }
+});
+
+// ─── Health Check (public) ────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // ─── API Key Middleware ────────────────────────────────────────────────────
@@ -30,7 +35,6 @@ app.use((req, res, next) => {
 //  CUSTOMERS / KYC
 // ══════════════════════════════════════════════════════════════════
 
-// GET all customers
 app.get('/customers', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -42,7 +46,6 @@ app.get('/customers', async (req, res) => {
   }
 });
 
-// GET single customer by ID
 app.get('/customers/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -56,7 +59,6 @@ app.get('/customers/:id', async (req, res) => {
   }
 });
 
-// POST create customer
 app.post('/customers', async (req, res) => {
   const { full_name, email, phone, id_number, id_type, kyc_status } = req.body;
   try {
@@ -71,7 +73,6 @@ app.post('/customers', async (req, res) => {
   }
 });
 
-// PATCH update KYC status
 app.patch('/customers/:id/kyc', async (req, res) => {
   const { kyc_status } = req.body;
   try {
@@ -88,10 +89,9 @@ app.patch('/customers/:id/kyc', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-//  TRANSACTIONS / MONEY TRANSFERS
+//  TRANSACTIONS
 // ══════════════════════════════════════════════════════════════════
 
-// GET all transactions (optional filter by status or customer)
 app.get('/transactions', async (req, res) => {
   const { status, customer_id } = req.query;
   let query = 'SELECT * FROM transactions WHERE 1=1';
@@ -116,7 +116,6 @@ app.get('/transactions', async (req, res) => {
   }
 });
 
-// GET single transaction
 app.get('/transactions/:id', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -130,7 +129,6 @@ app.get('/transactions/:id', async (req, res) => {
   }
 });
 
-// POST create transaction
 app.post('/transactions', async (req, res) => {
   const {
     sender_id, recipient_name, recipient_phone,
@@ -151,9 +149,8 @@ app.post('/transactions', async (req, res) => {
   }
 });
 
-// PATCH update transaction status
 app.patch('/transactions/:id/status', async (req, res) => {
-  const { status } = req.body; // pending | processing | completed | failed | cancelled
+  const { status } = req.body;
   try {
     const { rows } = await pool.query(
       `UPDATE transactions SET status = $1, updated_at = NOW()
@@ -168,10 +165,9 @@ app.patch('/transactions/:id/status', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
-//  BOOKINGS / APPOINTMENTS
+//  BOOKINGS
 // ══════════════════════════════════════════════════════════════════
 
-// GET all bookings
 app.get('/bookings', async (req, res) => {
   const { status, date } = req.query;
   let query = 'SELECT * FROM bookings WHERE 1=1';
@@ -196,7 +192,6 @@ app.get('/bookings', async (req, res) => {
   }
 });
 
-// POST create booking
 app.post('/bookings', async (req, res) => {
   const { customer_id, service, booking_date, booking_time, notes } = req.body;
   try {
@@ -211,7 +206,6 @@ app.post('/bookings', async (req, res) => {
   }
 });
 
-// PATCH update booking status
 app.patch('/bookings/:id', async (req, res) => {
   const { status, booking_date, booking_time } = req.body;
   try {
@@ -231,7 +225,6 @@ app.patch('/bookings/:id', async (req, res) => {
   }
 });
 
-// DELETE cancel booking
 app.delete('/bookings/:id', async (req, res) => {
   try {
     await pool.query(
@@ -242,11 +235,6 @@ app.delete('/bookings/:id', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// ─── Health Check ──────────────────────────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // ─── Start Server ──────────────────────────────────────────────────────────
