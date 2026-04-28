@@ -140,25 +140,18 @@ app.post('/transactions', async (req, res) => {
         (sender_id, recipient_name, recipient_phone, recipient_country,
          amount, currency, exchange_rate, status, notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8) RETURNING *`,
-      [sender_id, recipient_name, recipient_phone, recipient_country,
-       amount, currency, exchange_rate, notes]
+      [
+        sender_id || null,
+        recipient_name,
+        recipient_phone || null,
+        recipient_country || null,
+        amount,
+        currency || 'GMD',
+        exchange_rate || null,
+        notes || null
+      ]
     );
     res.status(201).json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.patch('/transactions/:id/status', async (req, res) => {
-  const { status } = req.body;
-  try {
-    const { rows } = await pool.query(
-      `UPDATE transactions SET status = $1, updated_at = NOW()
-       WHERE id = $2 RETURNING *`,
-      [status, req.params.id]
-    );
-    if (!rows.length) return res.status(404).json({ error: 'Transaction not found' });
-    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
