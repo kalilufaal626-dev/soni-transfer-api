@@ -91,7 +91,31 @@ app.post('/customers', async (req, res) => {
   }
 });
 
-// PATCH update KYC status by customer ID
+// PATCH update full customer profile + KYC status
+// ⚠️ Must be BEFORE /customers/:id/kyc to avoid conflict
+app.patch('/customers/:id', async (req, res) => {
+  const { kyc_status, email, id_number, id_type, full_name, phone } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE customers
+       SET kyc_status = COALESCE($1, kyc_status),
+           email = COALESCE($2, email),
+           id_number = COALESCE($3, id_number),
+           id_type = COALESCE($4, id_type),
+           full_name = COALESCE($5, full_name),
+           phone = COALESCE($6, phone),
+           updated_at = NOW()
+       WHERE id = $7 RETURNING *`,
+      [kyc_status || null, email || null, id_number || null, id_type || null, full_name || null, phone || null, req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Customer not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PATCH update KYC status only
 app.patch('/customers/:id/kyc', async (req, res) => {
   const { kyc_status } = req.body;
   try {
