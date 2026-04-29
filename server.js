@@ -47,6 +47,21 @@ app.get('/customers', async (req, res) => {
   }
 });
 
+// GET customer by phone number
+// ⚠️ Must be BEFORE /customers/:id to avoid conflict
+app.get('/customers/phone/:phone', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM customers WHERE phone ILIKE $1',
+      [`%${req.params.phone}%`]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Customer not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET single customer by ID
 app.get('/customers/:id', async (req, res) => {
   try {
@@ -68,7 +83,7 @@ app.post('/customers', async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO customers (full_name, email, phone, id_number, id_type, kyc_status)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [full_name, email, phone || null, id_number || null, id_type || null, kyc_status || 'pending']
+      [full_name, email || null, phone || null, id_number || null, id_type || null, kyc_status || 'pending']
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -76,7 +91,7 @@ app.post('/customers', async (req, res) => {
   }
 });
 
-// PATCH update KYC status
+// PATCH update KYC status by customer ID
 app.patch('/customers/:id/kyc', async (req, res) => {
   const { kyc_status } = req.body;
   try {
@@ -125,6 +140,36 @@ app.get('/transactions', async (req, res) => {
   }
 });
 
+// PATCH cancel transaction by recipient name or customer ID
+// ⚠️ Must be BEFORE /transactions/:id routes to avoid conflict
+app.patch('/transactions/cancel', async (req, res) => {
+  const { recipient_name, customer_id } = req.body;
+  let query = `UPDATE transactions SET status = 'cancelled', updated_at = NOW()
+               WHERE status = 'pending'`;
+  const params = [];
+
+  if (recipient_name) {
+    params.push(`%${recipient_name}%`);
+    query += ` AND recipient_name ILIKE $${params.length}`;
+  }
+  if (customer_id) {
+    params.push(customer_id);
+    query += ` AND sender_id = $${params.length}`;
+  }
+
+  query += ' RETURNING *';
+
+  try {
+    const { rows } = await pool.query(query, params);
+    if (!rows.length) return res.status(404).json({
+      error: 'No pending transaction found for that recipient'
+    });
+    res.json({ success: true, transaction: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET single transaction by ID
 app.get('/transactions/:id', async (req, res) => {
   try {
@@ -168,7 +213,7 @@ app.post('/transactions', async (req, res) => {
   }
 });
 
-// PATCH update transaction status
+// PATCH update transaction status by ID
 app.patch('/transactions/:id/status', async (req, res) => {
   const { status } = req.body;
   try {
@@ -184,7 +229,7 @@ app.patch('/transactions/:id/status', async (req, res) => {
   }
 });
 
-// PATCH cancel transaction (only pending transactions can be cancelled)
+// PATCH cancel transaction by ID (only pending)
 app.patch('/transactions/:id/cancel', async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -230,6 +275,38 @@ app.get('/bookings', async (req, res) => {
   }
 });
 
+// PATCH cancel booking by date or service (no ID needed)
+// ⚠️ Must be BEFORE /bookings/:id routes to avoid conflict
+app.patch('/bookings/cancel', async (req, res) => {
+  const { customer_id, booking_date, service } = req.body;
+  let query = `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
+               WHERE status != 'cancelled'`;
+  const params = [];
+
+  if (customer_id) {
+    params.push(customer_id);
+    query += ` AND customer_id = $${params.length}`;
+  }
+  if (booking_date) {
+    params.push(booking_date);
+    query += ` AND booking_date = $${params.length}`;
+  }
+  if (service) {
+    params.push(`%${service}%`);
+    query += ` AND service ILIKE $${params.length}`;
+  }
+
+  query += ' RETURNING *';
+
+  try {
+    const { rows } = await pool.query(query, params);
+    if (!rows.length) return res.status(404).json({ error: 'No matching booking found' });
+    res.json({ success: true, booking: rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST create booking
 app.post('/bookings', async (req, res) => {
   const { customer_id, service, booking_date, booking_time, notes } = req.body;
@@ -260,37 +337,6 @@ app.patch('/bookings/:id', async (req, res) => {
     );
     if (!rows.length) return res.status(404).json({ error: 'Booking not found' });
     res.json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PATCH cancel booking by date or service (no ID needed)
-app.patch('/bookings/cancel', async (req, res) => {
-  const { customer_id, booking_date, service } = req.body;
-  let query = `UPDATE bookings SET status = 'cancelled', updated_at = NOW()
-               WHERE status != 'cancelled'`;
-  const params = [];
-
-  if (customer_id) {
-    params.push(customer_id);
-    query += ` AND customer_id = $${params.length}`;
-  }
-  if (booking_date) {
-    params.push(booking_date);
-    query += ` AND booking_date = $${params.length}`;
-  }
-  if (service) {
-    params.push(`%${service}%`);
-    query += ` AND service ILIKE $${params.length}`;
-  }
-
-  query += ' RETURNING *';
-
-  try {
-    const { rows } = await pool.query(query, params);
-    if (!rows.length) return res.status(404).json({ error: 'No matching booking found' });
-    res.json({ success: true, booking: rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
