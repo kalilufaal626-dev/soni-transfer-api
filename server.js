@@ -32,6 +32,52 @@ app.use((req, res, next) => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+//  SUBSCRIBERS (WhatsApp broadcast list)
+// ══════════════════════════════════════════════════════════════════
+
+// GET all subscribers
+app.get('/subscribers', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM subscribers ORDER BY created_at DESC'
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST save subscriber (auto saves on every WhatsApp message)
+app.post('/subscribers', async (req, res) => {
+  const { phone, name, platform } = req.body;
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO subscribers (phone, name, platform)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (phone) DO UPDATE SET name = COALESCE($2, subscribers.name)
+       RETURNING *`,
+      [phone, name || null, platform || 'whatsapp']
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE remove subscriber
+app.delete('/subscribers/:phone', async (req, res) => {
+  try {
+    await pool.query(
+      'DELETE FROM subscribers WHERE phone = $1',
+      [req.params.phone]
+    );
+    res.json({ success: true, message: 'Subscriber removed' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
 //  CUSTOMERS / KYC
 // ══════════════════════════════════════════════════════════════════
 
